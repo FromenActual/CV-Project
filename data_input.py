@@ -2,7 +2,7 @@ import cv2
 import glob
 import os
 import numpy as np
-import math
+import simpleaudio as sa
 import vanishing
 
 # Mouse callback function. Appends the x,y location of mouse click to a list.
@@ -42,13 +42,16 @@ for image_file_name in image_file_names:
 	#cv2.imshow('Staff Lines',staffLines)
 	
 	# Connected components to find lines
-	# 0th element is always entire image for some reason, maybe black area?
 	num_labels, labels_img, stats, centroids = cv2.connectedComponentsWithStats(staffLines)
 	
+	# 0th element is background label, need to ignore it
+	num_labels -= 1
+	stats = np.delete(stats, 0, 0)
+	
 	# Get y value of each line
-	yLines = np.zeros(num_labels-1)
-	for i in range(num_labels-1):
-		yLines[i] = stats[i+1, cv2.CC_STAT_TOP] + stats[i+1, cv2.CC_STAT_HEIGHT]/2
+	yLines = np.zeros(num_labels)
+	for i in range(num_labels):
+		yLines[i] = stats[i, cv2.CC_STAT_TOP] + stats[i, cv2.CC_STAT_HEIGHT]/2
 	#print(yLines)
 	
 	## Bar lines
@@ -59,13 +62,17 @@ for image_file_name in image_file_names:
 	#cv2.imshow('Bar Lines',barLines)
 	
 	# Connected components to find lines
-	# 0th element is always entire image for some reason, maybe black area?
+	# 0th element is background label, need to ignore it
 	num_labels, labels_img, stats, centroids = cv2.connectedComponentsWithStats(barLines)
 	
+	# 0th element is background label, need to ignore it
+	num_labels -= 1
+	stats = np.delete(stats, 0, 0)
+	
 	# Get x value of each line
-	xLines = np.zeros(num_labels-1)
-	for i in range(num_labels-1):
-		xLines[i] = stats[i+1, cv2.CC_STAT_LEFT] + stats[i+1, cv2.CC_STAT_WIDTH]/2
+	xLines = np.zeros(num_labels)
+	for i in range(num_labels):
+		xLines[i] = stats[i, cv2.CC_STAT_LEFT] + stats[i, cv2.CC_STAT_WIDTH]/2
 	#print(xLines)
 	
 	## Combined
@@ -73,35 +80,80 @@ for image_file_name in image_file_names:
 	# Combine staff and bar lines
 	features_img = cv2.bitwise_or(staffLines,barLines)
 	
+	# Subtract all features above from binary image
+	bin_img = cv2.bitwise_and(bin_img, cv2.bitwise_not(features_img))
+	
 	####################################################################################
 	## Detect Braces
 	####################################################################################
 	
-	# Open brace template
+	# Open template
 	template_directory = "Templates/"
-	brace_filename = os.path.join(template_directory, "brace.png")
-	brace_template = cv2.imread(brace_filename, 0)
+	template_filename = os.path.join(template_directory, "brace.png")
+	template = cv2.imread(template_filename, 0)
 	
-	# Use template matching to find braces
-	scores = cv2.matchTemplate(bin_img, brace_template, cv2.TM_CCOEFF_NORMED)
-	thresh = 0.7
+	# Use template matching to find templates
+	scores = cv2.matchTemplate(bin_img, template, cv2.TM_CCOEFF_NORMED)
+	thresh = 0.5
 	matches = np.where(scores > thresh)
 	
-	# Add braces to new image
-	brace_img = np.zeros([image_height, image_width], dtype=np.uint8)
+	# Add templates to new image
+	template_img = np.zeros([image_height, image_width], dtype=np.uint8)
 	for i in range(len(matches[0])):
 		x = matches[1][i]
 		y = matches[0][i]
-		brace_img[y:y+brace_template.shape[0], x:x+brace_template.shape[1]] |= brace_template
+		template_img[y:y+template.shape[0], x:x+template.shape[1]] |= template
 	
-	# Add braces to detected features
-	features_img = cv2.bitwise_or(features_img,brace_img)
+	# Add templates to detected features
+	features_img = cv2.bitwise_or(features_img,template_img)
 	
 	####################################################################################
 	## Detect Clefs
 	####################################################################################
 	
-	# Code
+	## Treble clef
+	
+	# Open template
+	template_directory = "Templates/"
+	template_filename = os.path.join(template_directory, "treble_clef.png")
+	template = cv2.imread(template_filename, 0)
+	
+	# Use template matching to find templates
+	scores = cv2.matchTemplate(bin_img, template, cv2.TM_CCOEFF_NORMED)
+	thresh = 0.5
+	matches = np.where(scores > thresh)
+	
+	# Add templates to new image
+	template_img = np.zeros([image_height, image_width], dtype=np.uint8)
+	for i in range(len(matches[0])):
+		x = matches[1][i]
+		y = matches[0][i]
+		template_img[y:y+template.shape[0], x:x+template.shape[1]] |= template
+	
+	# Add templates to detected features
+	features_img = cv2.bitwise_or(features_img,template_img)
+	
+	## Bass clef
+	
+	# Open template
+	template_directory = "Templates/"
+	template_filename = os.path.join(template_directory, "bass_clef.png")
+	template = cv2.imread(template_filename, 0)
+	
+	# Use template matching to find templates
+	scores = cv2.matchTemplate(bin_img, template, cv2.TM_CCOEFF_NORMED)
+	thresh = 0.5
+	matches = np.where(scores > thresh)
+	
+	# Add templates to new image
+	template_img = np.zeros([image_height, image_width], dtype=np.uint8)
+	for i in range(len(matches[0])):
+		x = matches[1][i]
+		y = matches[0][i]
+		template_img[y:y+template.shape[0], x:x+template.shape[1]] |= template
+	
+	# Add templates to detected features
+	features_img = cv2.bitwise_or(features_img,template_img)
 	
 	####################################################################################
 	## Detect Time Signatures
@@ -119,54 +171,132 @@ for image_file_name in image_file_names:
 	## Detect Notes
 	####################################################################################
 	
+	# Subtract all features above from binary image
+	bin_img = cv2.bitwise_and(bin_img, cv2.bitwise_not(features_img))
+	
+	# Cleanup a bit, not all features line up perfectly, and some features cut through the notes
+	'''size=2
+	kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size))
+	bin_img = cv2.morphologyEx(bin_img, cv2.MORPH_OPEN, kernel)
+	# Reconnect notes that got disconnected
+	size=4
+	kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size))
+	bin_img = cv2.morphologyEx(bin_img, cv2.MORPH_CLOSE, kernel)'''
+	
+	cv2.imshow('Music With Features Removed', bin_img)
+	
+	# Open template
+	template_directory = "Templates/"
+	template_filename = os.path.join(template_directory, "note.png")
+	template = cv2.imread(template_filename, 0)
+	
+	# Use template matching to find templates
+	scores = cv2.matchTemplate(bin_img, template, cv2.TM_CCOEFF_NORMED)
+	thresh = 0.5
+	matches = np.where(scores > thresh)
+	
+	# Add templates to new image
+	template_img = np.zeros([image_height, image_width], dtype=np.uint8)
+	for i in range(len(matches[0])):
+		x = matches[1][i]
+		y = matches[0][i]
+		template_img[y:y+template.shape[0], x:x+template.shape[1]] |= template
+		
+	cv2.imshow('Detected Notes', template_img)
+	
+	# Add templates to detected features
+	features_img = cv2.bitwise_or(features_img,template_img)
+	
 	# Show all detected features
 	cv2.imshow('Detected Features', features_img)
 	
-	# Subtract all features above from binary image
-	notes_img = bin_img - features_img
+	## Detect notes
 	
-	# Cleanup a bit, not all features line up perfectly, and some features cut through the notes
-	#size=3
-	#kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size))
-	#notes_img = cv2.morphologyEx(notes_img, cv2.MORPH_CLOSE, kernel)
-	#notes_img = cv2.morphologyEx(notes_img, cv2.MORPH_OPEN, kernel)
+	# Connected components to find lines
+	# 0th element is background label, need to ignore it
+	num_labels, labels_img, stats, centroids = cv2.connectedComponentsWithStats(template_img)
 	
-	cv2.imshow('Music With Features Removed', notes_img)
+	# 0th element is background label, need to ignore it
+	num_labels -= 1
+	stats = np.delete(stats, 0, 0)
+	
+	# Song info
+	num_labels = 11 # First row for now
+	numNotes = num_labels
+	samplingRate = 48000 # Hz
+	noteDuration = 0.5 # Seconds
+	noteSamples = int(noteDuration * samplingRate)
+	songDuration = noteDuration * numNotes # Seconds
+	songSamples = int(songDuration*samplingRate)
+	song = np.linspace(0, songDuration, songSamples)
+	
+	# (x,y) location of each note
+	note_locations = np.zeros([num_labels, 2])
+	
+	# Find location of all notes
+	for i in range(num_labels):
+		note_locations[i,0] = stats[i, cv2.CC_STAT_LEFT] + stats[i, cv2.CC_STAT_WIDTH]/2
+		note_locations[i,1] = stats[i, cv2.CC_STAT_TOP] + stats[i, cv2.CC_STAT_HEIGHT]/2
+	
+	# Sort notes by x value to order sequentially
+	note_locations = note_locations[np.argsort(note_locations[:,0])]
+	
+	staffSpacing = (yLines[4]-yLines[0])/4
+	noteSpacing = staffSpacing/2
+	
+	A_freq = 440
+	A_yVal = np.mean(yLines[2:4])
+	print(A_yVal)
+	
+	# Loop through notes and
+	for i in range(num_labels):
+		foo = round((note_locations[i,1] - A_yVal)/noteSpacing)
+		
+		print(foo)
+		
+		
+		note_audio = np.linspace(0, noteDuration, noteSamples)
+		note_freq = A_freq * (1-foo/12)
+		song[i*(noteSamples) : (i+1)*noteSamples] = np.sin(note_audio*note_freq*2*np.pi)
+	#print(note_locations)
 	
 	
 	
+	# Show images
+	cv2.waitKey(1)
 	
+	# normalize to 16-bit range
+	song *= 32767 / np.max(np.abs(song))
+	# convert to 16-bit data
+	song = song.astype(np.int16)
 	
-	
-	
-	'''kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (750,25))
-	break_apart = cv2.morphologyEx(cv2.bitwise_not(gray_img), cv2.MORPH_OPEN, kernel)
-	cv2.imshow('huh',break_apart)
+	import scipy.io.wavfile
+	scipy.io.wavfile.write("song.wav", samplingRate, song)
 
+	# start playback
+	play_obj = sa.play_buffer(song, 1, 2, samplingRate)
 
+	# wait for playback to finish before exiting
+	play_obj.wait_done()
 	
-	#test=gray_img.copy()
-	contours,_ = cv2.findContours(staffLines, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-	#note_locations=cv2.drawContours(test, contours, -1, (0,0,0), 1)
-
-
-	cv2.imshow('remove lines',note_locations)
-
-	kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-	# # note_locations = cv2.morphologyEx(gray_img, cv2.MORPH_CLOSE, kernel)
-	# note_locations = cv2.dilate(note_locations, kernel)
-	# kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))
-	# note_locations = cv2.erode(note_locations, kernel)
-
-	#Finds the notes through morplogy
-	size=3
-	kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size))
-	note_locations = cv2.morphologyEx(note_locations, cv2.MORPH_CLOSE, kernel)
-
-	note_locations = cv2.morphologyEx(note_locations, cv2.MORPH_OPEN, kernel)
-
-	cv2.imshow('note_locations',note_locations)
-	cv2.imshow('music',bin_img)'''
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
 
 
 	# ############################################################################
@@ -199,7 +329,7 @@ for image_file_name in image_file_names:
 	# hougstaffLines = cv2.HougstaffLinesP(
 	#     image=edge_img,
 	#     rho=1,
-	#     theta=math.pi/180,
+	#     theta=np.pi/180,
 	#     threshold=int(image_width * MIN_HOUGH_VOTES_FRACTION),
 	#     lines=None,
 	#     minLineLength=int(image_width * MIN_LINE_LENGTH_FRACTION),
