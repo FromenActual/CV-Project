@@ -1,30 +1,52 @@
 import numpy as np
 import simpleaudio as sa
+import noteDictionary
 
-# calculate note frequencies
-A_freq = 440
-Csh_freq = A_freq * 2 ** (4 / 12)
-E_freq = A_freq * 2 ** (7 / 12)
+noteDict, octaveNumber = noteDictionary.getDictionary()
+numNotes = len(noteDict.keys())
+noteDuration = 0.5
 
 # get timesteps for each sample, T is note duration in seconds
 sample_rate = 48000
-T = 1
-t = np.linspace(0, T, int(T * sample_rate), False)
+songDuration = numNotes * noteDuration
+song = 0
 
-# generate sine wave notes
-A_note = np.sin(A_freq * t * 2 * np.pi)
-Csh_note = np.sin(Csh_freq * t * 2 * np.pi)
-E_note = np.sin(E_freq * t * 2 * np.pi)
+noteLabels=[
+'C',
+'C#',
+'Db',
+'D',
+'D#',
+'Eb',
+'E' ,
+'F',
+'F#',
+'Gb',
+'G' ,
+'G#',
+'Ab',
+'A' ,
+'A#',
+'Bb',
+'B' ]
 
-# concatenate notes
-audio = A_note + Csh_note + E_note
+for i in range(len(noteLabels)):
+	freq=noteDict[noteLabels[i]]
+	print(freq)
+	note_audio = np.linspace(0, noteDuration, int(sample_rate*noteDuration))
+	note_audio = np.sin(note_audio*freq*2*np.pi)
+	song = np.append(song, note_audio)
+
 # normalize to 16-bit range
-audio *= 32767 / np.max(np.abs(audio))
+song *= 32767 / np.max(np.abs(song))/5
 # convert to 16-bit data
-audio = audio.astype(np.int16)
+song = song.astype(np.int16)
+
+import scipy.io.wavfile
+scipy.io.wavfile.write("song.wav", sample_rate, song)
 
 # start playback
-play_obj = sa.play_buffer(audio, 1, 2, sample_rate)
+play_obj = sa.play_buffer(song, 1, 2, 48000)
 
 # wait for playback to finish before exiting
 play_obj.wait_done()

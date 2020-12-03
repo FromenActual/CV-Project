@@ -3,7 +3,7 @@ import glob
 import os
 import numpy as np
 import simpleaudio as sa
-import vanishing
+import noteDictionary
 
 # Mouse callback function. Appends the x,y location of mouse click to a list.
 def get_xy(event, x, y, flags, param):
@@ -51,8 +51,12 @@ for image_file_name in image_file_names:
 	# Get y value of each line
 	yLines = np.zeros(num_labels)
 	for i in range(num_labels):
-		yLines[i] = stats[i, cv2.CC_STAT_TOP] + stats[i, cv2.CC_STAT_HEIGHT]/2
+		yLines[i] = stats[i, cv2.CC_STAT_TOP] + stats[i, cv2.CC_STAT_HEIGHT]//2
 	#print(yLines)
+	
+	# Make sure we have a multiple of 5 staff lines
+	if(len(yLines)%5!=0):
+		raise('INCORRECT NUMBER OF STAFF LINES')
 	
 	## Bar lines
 	
@@ -113,6 +117,9 @@ for image_file_name in image_file_names:
 	
 	## Treble clef
 	
+	# Location of clefs and types. The same clef may create multiple entries in this
+	yClefs = {}
+	
 	# Open template
 	template_directory = "Templates/"
 	template_filename = os.path.join(template_directory, "treble_clef.png")
@@ -129,6 +136,9 @@ for image_file_name in image_file_names:
 		x = matches[1][i]
 		y = matches[0][i]
 		template_img[y:y+template.shape[0], x:x+template.shape[1]] |= template
+		
+		# Save location of this clef for later
+		yClefs[int(y+template.shape[0]/2)] = 'treble'
 	
 	# Add templates to detected features
 	features_img = cv2.bitwise_or(features_img,template_img)
@@ -151,6 +161,9 @@ for image_file_name in image_file_names:
 		x = matches[1][i]
 		y = matches[0][i]
 		template_img[y:y+template.shape[0], x:x+template.shape[1]] |= template
+		
+		# Save location of this clef for later
+		yClefs[int(y+template.shape[0]/2)] = 'bass'
 	
 	# Add templates to detected features
 	features_img = cv2.bitwise_or(features_img,template_img)
@@ -175,15 +188,18 @@ for image_file_name in image_file_names:
 	bin_img = cv2.bitwise_and(bin_img, cv2.bitwise_not(features_img))
 	
 	# Cleanup a bit, not all features line up perfectly, and some features cut through the notes
-	'''size=2
+	'''size=4
 	kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size))
 	bin_img = cv2.morphologyEx(bin_img, cv2.MORPH_OPEN, kernel)
+	#bin_img = cv2.erode(bin_img, kernel)
 	# Reconnect notes that got disconnected
 	size=4
 	kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size))
 	bin_img = cv2.morphologyEx(bin_img, cv2.MORPH_CLOSE, kernel)'''
 	
 	cv2.imshow('Music With Features Removed', bin_img)
+	
+	## Detect notes
 	
 	# Open template
 	template_directory = "Templates/"
@@ -210,7 +226,73 @@ for image_file_name in image_file_names:
 	# Show all detected features
 	cv2.imshow('Detected Features', features_img)
 	
-	## Detect notes
+	## Label staff lines
+	
+	# Determine the note for each staff line (y values)
+	yNotes = {}
+	for i in range(len(yLines)//5):
+		# Index of first staff line in this loop
+		staffIndex = i*5
+		# Number of pixels between each note
+		noteSpacing = (yLines[staffIndex+4] - yLines[staffIndex]) / 8
+		# Middle of these staff lines
+		middle = yLines[staffIndex+2]
+		
+		# Determine clef of these staff lines
+		thisClef = ''
+		for yVal,clef in yClefs.items():
+			# Skip if center of clef if not between the top and bottom staff lines
+			if yVal < yLines[staffIndex] or yVal > yLines[staffIndex+4]:
+				continue
+			thisClef = clef
+		
+		# Just in case...
+		if(thisClef == ''):
+			raise('CLEF NOT DETECTED')
+		
+		if(thisClef == 'treble'):
+			yNotes[int(middle-noteSpacing*9)] = ['D',6]
+			yNotes[int(middle-noteSpacing*8)] = ['C',6]
+			yNotes[int(middle-noteSpacing*7)] = ['B',5]
+			yNotes[int(middle-noteSpacing*6)] = ['A',5]
+			yNotes[int(middle-noteSpacing*5)] = ['G',5]
+			yNotes[int(middle-noteSpacing*4)] = ['F',5]
+			yNotes[int(middle-noteSpacing*3)] = ['E',5]
+			yNotes[int(middle-noteSpacing*2)] = ['D',5]
+			yNotes[int(middle-noteSpacing*1)] = ['C',5]
+			yNotes[int(middle+noteSpacing*0)] = ['B',4]
+			yNotes[int(middle+noteSpacing*1)] = ['A',4]
+			yNotes[int(middle+noteSpacing*2)] = ['G',4]
+			yNotes[int(middle+noteSpacing*3)] = ['F',4]
+			yNotes[int(middle+noteSpacing*4)] = ['E',4]
+			yNotes[int(middle+noteSpacing*5)] = ['D',4]
+			yNotes[int(middle+noteSpacing*6)] = ['C',4]
+			yNotes[int(middle+noteSpacing*7)] = ['B',3]
+			yNotes[int(middle+noteSpacing*8)] = ['A',3]
+			yNotes[int(middle+noteSpacing*8)] = ['G',3]
+		
+		elif(thisClef == 'bass'):
+			yNotes[int(middle-noteSpacing*9)] = ['F',5]
+			yNotes[int(middle-noteSpacing*8)] = ['E',5]
+			yNotes[int(middle-noteSpacing*7)] = ['D',5]
+			yNotes[int(middle-noteSpacing*6)] = ['C',5]
+			yNotes[int(middle-noteSpacing*5)] = ['B',4]
+			yNotes[int(middle-noteSpacing*4)] = ['A',4]
+			yNotes[int(middle-noteSpacing*3)] = ['G',4]
+			yNotes[int(middle-noteSpacing*2)] = ['F',4]
+			yNotes[int(middle-noteSpacing*1)] = ['E',4]
+			yNotes[int(middle+noteSpacing*0)] = ['D',4]
+			yNotes[int(middle+noteSpacing*1)] = ['C',4]
+			yNotes[int(middle+noteSpacing*2)] = ['B',3]
+			yNotes[int(middle+noteSpacing*3)] = ['A',3]
+			yNotes[int(middle+noteSpacing*4)] = ['G',3]
+			yNotes[int(middle+noteSpacing*5)] = ['F',3]
+			yNotes[int(middle+noteSpacing*6)] = ['E',3]
+			yNotes[int(middle+noteSpacing*7)] = ['D',3]
+			yNotes[int(middle+noteSpacing*8)] = ['C',3]
+			yNotes[int(middle+noteSpacing*8)] = ['B',2]
+	
+	## Determine note durations and frequencies
 	
 	# Connected components to find lines
 	# 0th element is background label, need to ignore it
@@ -220,64 +302,163 @@ for image_file_name in image_file_names:
 	num_labels -= 1
 	stats = np.delete(stats, 0, 0)
 	
+	
+	
+	
+	
+	note_locations = np.zeros([num_labels, 2])
+	
+	# Find location of all notes
+	for i in range(num_labels):
+		note_locations[i,0] = stats[i, cv2.CC_STAT_LEFT] + stats[i, cv2.CC_STAT_WIDTH]//2
+		note_locations[i,1] = stats[i, cv2.CC_STAT_TOP] + stats[i, cv2.CC_STAT_HEIGHT]//2
+	
+	# Separate notes into groups based on which staff lines they belong to
+	numStaffGroups = len(yLines)//5
+	noteLocationGroups = np.zeros(numStaffGroups, dtype=object)
+	for i in range(numStaffGroups):
+		if(i < numStaffGroups-1): # All but last group
+			# Define threshold y value between staff line groups
+			staffIndex = i*5
+			thresh = (yLines[staffIndex+4]+yLines[staffIndex+5])/2
+			
+			# Get index of each note above threshold
+			indices = np.where(note_locations[:,1]<thresh)[0]
+			
+			# Add notes to group
+			noteLocationGroups[i] = note_locations[indices,:]
+			
+			# Remove notes that have been grouped
+			note_locations = np.delete(note_locations, indices, 0)
+		else: # Last group
+			# Add notes to group
+			noteLocationGroups[i] = note_locations
+		
+		# Sort notes by x value to order sequentially
+		noteLocationGroups[i] = noteLocationGroups[i][np.argsort(noteLocationGroups[i][:,0])]
+	
+		print(noteLocationGroups[i].shape)
+	
+	
+	
+	
+	
+	
+	
+	## Create song
+	
 	# Song info
-	num_labels = 11 # First row for now
+	num_labels = 32 # First row for now
 	numNotes = num_labels
 	samplingRate = 48000 # Hz
 	noteDuration = 0.5 # Seconds
 	noteSamples = int(noteDuration * samplingRate)
 	songDuration = noteDuration * numNotes # Seconds
 	songSamples = int(songDuration*samplingRate)
-	song = np.linspace(0, songDuration, songSamples)
+	song = np.zeros(songSamples)
 	
-	# (x,y) location of each note
-	note_locations = np.zeros([num_labels, 2])
+	# Easier format for finding y value of notes
+	yStaffLines = np.array(list(yNotes.keys()))
 	
-	# Find location of all notes
-	for i in range(num_labels):
-		note_locations[i,0] = stats[i, cv2.CC_STAT_LEFT] + stats[i, cv2.CC_STAT_WIDTH]/2
-		note_locations[i,1] = stats[i, cv2.CC_STAT_TOP] + stats[i, cv2.CC_STAT_HEIGHT]/2
-	
-	# Sort notes by x value to order sequentially
-	note_locations = note_locations[np.argsort(note_locations[:,0])]
-	
-	staffSpacing = (yLines[4]-yLines[0])/4
-	noteSpacing = staffSpacing/2
-	
-	A_freq = 440
-	A_yVal = np.mean(yLines[2:4])
-	print(A_yVal)
+	# Dictionary of notes
+	dictOctave = 4
+	noteDictionary = {
+		'C'	:261.63,
+		'D' :293.66,
+		'E' :329.63,
+		'F' :349.23,
+		'G' :392.00,
+		'A' :440.00,
+		'B' :493.88}
 	
 	# Loop through notes and
-	for i in range(num_labels):
-		foo = round((note_locations[i,1] - A_yVal)/noteSpacing)
+	for i in range(len(noteLocationGroups[0])):
+		# Find index of staff line that is closest to this note
+		noteIndex = np.argmin(np.abs(yStaffLines - noteLocationGroups[0][i,1]))
 		
-		print(foo)
+		# Determine frequency of this note
+		noteLetter, octave = yNotes[yStaffLines[noteIndex]]
+		note_freq = noteDictionary[noteLetter]*2**(octave-dictOctave)
 		
+		# If sharp
+		#note_freq = note_freq*2**(1/12)
+		# If flat
+		#note_freq = note_freq*2**(-1/12)
 		
-		note_audio = np.linspace(0, noteDuration, noteSamples)
-		note_freq = A_freq * (1-foo/12)
-		song[i*(noteSamples) : (i+1)*noteSamples] = np.sin(note_audio*note_freq*2*np.pi)
+		# Create sinusoid for this note
+		t = np.linspace(i*noteDuration, (i+1)*noteDuration, noteSamples)
+		song[i*(noteSamples) : (i+1)*noteSamples] += np.sin(t*note_freq*2*np.pi)
+	for i in range(len(noteLocationGroups[1])):
+		# Find index of staff line that is closest to this note
+		noteIndex = np.argmin(np.abs(yStaffLines - noteLocationGroups[1][i,1]))
+		
+		# Determine frequency of this note
+		noteLetter, octave = yNotes[yStaffLines[noteIndex]]
+		note_freq = noteDictionary[noteLetter]*2**(octave-dictOctave)
+		
+		# If sharp
+		#note_freq = note_freq*2**(1/12)
+		# If flat
+		#note_freq = note_freq*2**(-1/12)
+		
+		# Create sinusoid for this note
+		t = np.linspace(i*noteDuration, (i+1)*noteDuration, noteSamples)
+		song[i*(noteSamples) : (i+1)*noteSamples] += np.sin(t*note_freq*2*np.pi)
+	for i in range(len(noteLocationGroups[2])):
+		# Find index of staff line that is closest to this note
+		noteIndex = np.argmin(np.abs(yStaffLines - noteLocationGroups[2][i,1]))
+		
+		# Determine frequency of this note
+		noteLetter, octave = yNotes[yStaffLines[noteIndex]]
+		note_freq = noteDictionary[noteLetter]*2**(octave-dictOctave)
+		
+		# If sharp
+		#note_freq = note_freq*2**(1/12)
+		# If flat
+		#note_freq = note_freq*2**(-1/12)
+		
+		# Create sinusoid for this note
+		t = np.linspace(i*noteDuration, (i+1)*noteDuration, noteSamples)
+		song[(i+16)*(noteSamples) : (i+17)*noteSamples] += np.sin(t*note_freq*2*np.pi)
+	for i in range(len(noteLocationGroups[3])):
+		# Find index of staff line that is closest to this note
+		noteIndex = np.argmin(np.abs(yStaffLines - noteLocationGroups[3][i,1]))
+		
+		# Determine frequency of this note
+		noteLetter, octave = yNotes[yStaffLines[noteIndex]]
+		note_freq = noteDictionary[noteLetter]*2**(octave-dictOctave)
+		
+		# If sharp
+		#note_freq = note_freq*2**(1/12)
+		# If flat
+		#note_freq = note_freq*2**(-1/12)
+		
+		# Create sinusoid for this note
+		t = np.linspace(i*noteDuration, (i+1)*noteDuration, noteSamples)
+		song[(i+16)*(noteSamples) : (i+17)*noteSamples] += np.sin(t*note_freq*2*np.pi)
 	#print(note_locations)
 	
-	
+	## Play music
 	
 	# Show images
 	cv2.waitKey(1)
 	
 	# normalize to 16-bit range
 	song *= 32767 / np.max(np.abs(song))
+	song /= 5 # Not too loud
 	# convert to 16-bit data
 	song = song.astype(np.int16)
 	
 	import scipy.io.wavfile
 	scipy.io.wavfile.write("song.wav", samplingRate, song)
+	
+	playSong = True
+	if(playSong):
+		# start playback
+		play_obj = sa.play_buffer(song, 1, 2, samplingRate)
 
-	# start playback
-	play_obj = sa.play_buffer(song, 1, 2, samplingRate)
-
-	# wait for playback to finish before exiting
-	play_obj.wait_done()
+		# wait for playback to finish before exiting
+		play_obj.wait_done()
 	
 	
 	
