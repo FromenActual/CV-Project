@@ -227,7 +227,46 @@ for image_file_name in image_file_names:
 	## Detect Time Signatures
 	####################################################################################
 	
-	# Code
+	# Assume 44 time unless we find a template match that says otherwise
+	timeSignature = '44'
+	
+	## 44 time
+	
+	# Open template
+	template_directory = "Templates/"
+	template_filename = os.path.join(template_directory, "time_44.png")
+	template = cv2.imread(template_filename, 0)
+	
+	# Use template matching to find templates
+	scores = cv2.matchTemplate(bin_img, template, cv2.TM_CCOEFF_NORMED)
+	thresh = 0.9
+	matches = np.where(scores > thresh)
+	
+	# Add templates to new image
+	for i in range(len(matches[0])):
+		x = matches[1][i]
+		y = matches[0][i]
+		features_img[y:y+template.shape[0], x:x+template.shape[1]] |= template
+		timeSignature = '44'
+	
+	## 38 time
+	
+	# Open template
+	template_directory = "Templates/"
+	template_filename = os.path.join(template_directory, "time_38.png")
+	template = cv2.imread(template_filename, 0)
+	
+	# Use template matching to find templates
+	scores = cv2.matchTemplate(bin_img, template, cv2.TM_CCOEFF_NORMED)
+	thresh = 0.9
+	matches = np.where(scores > thresh)
+	
+	# Add templates to new image
+	for i in range(len(matches[0])):
+		x = matches[1][i]
+		y = matches[0][i]
+		features_img[y:y+template.shape[0], x:x+template.shape[1]] |= template
+		timeSignature = '38'
 	
 	####################################################################################
 	## Detect Rests
@@ -280,13 +319,8 @@ for image_file_name in image_file_names:
 	bin_img = cv2.bitwise_and(bin_img, cv2.bitwise_not(features_img))
 	
 	# Cleanup a bit, not all features line up perfectly, and some features cut through the notes
-	kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (1, 4))
+	kernel = np.ones([4, 1])
 	bin_img = cv2.morphologyEx(bin_img, cv2.MORPH_CLOSE, kernel)
-	#bin_img = cv2.erode(bin_img, kernel)
-	# Reconnect notes that got disconnected
-	#size=4
-	#kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size))
-	#bin_img = cv2.morphologyEx(bin_img, cv2.MORPH_CLOSE, kernel)
 	
 	cv2.imshow('Music With Features Removed', bin_img)
 	
@@ -430,7 +464,7 @@ for image_file_name in image_file_names:
 	
 	# Song info
 	numBeats = 32
-	bpm = 120
+	bpm = 180
 	beatDuration = 60/bpm # Seconds
 	samplingRate = 48000 # Hz
 	beatSamples = int(beatDuration * samplingRate)
@@ -492,9 +526,6 @@ for image_file_name in image_file_names:
 	
 	## Play music
 	
-	# Show images
-	cv2.waitKey(1)
-	
 	# normalize to 16-bit range
 	song *= 32767 / np.max(np.abs(song))
 	song /= 5 # Not too loud
@@ -504,8 +535,9 @@ for image_file_name in image_file_names:
 	import scipy.io.wavfile
 	scipy.io.wavfile.write("song.wav", samplingRate, song)
 	
-	playSong = True
-	if(playSong):
+	while(True):
+		if(cv2.waitKey(0) != ord('p')):
+			break
 		# start playback
 		play_obj = sa.play_buffer(song, 1, 2, samplingRate)
 
@@ -642,5 +674,4 @@ for image_file_name in image_file_names:
 	# horizontal = cv2.morphologyEx(horizontal, cv2.MORPH_OPEN, kernel)
 	# cv2.imshow('test',horizontal)
 
-	cv2.waitKey(0)
 
